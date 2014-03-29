@@ -31,8 +31,9 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
-package org.mozilla.intl.chardet ;
+package org.mozilla.intl.chardet;
 import java.lang.* ;
+
 
 public abstract class nsPSMDetector {
 
@@ -56,6 +57,9 @@ public abstract class nsPSMDetector {
    int     mItems ;
    int	   mClassItems ;
  
+   boolean mCheckBOM = false;
+   boolean start = true;
+   
    boolean mDone ;
    boolean mRunSampler ;
    boolean mClassRunSampler ;
@@ -68,6 +72,12 @@ public abstract class nsPSMDetector {
    public nsPSMDetector(int langFlag) {
 	initVerifiers(langFlag);
 	Reset() ;
+   }
+   
+   public nsPSMDetector(int langFlag, boolean checkBOM) {
+		initVerifiers(langFlag);
+		Reset() ;
+		mCheckBOM = checkBOM;
    }
 
    public nsPSMDetector(int aItems, nsVerifier[] aVerifierSet, 
@@ -83,6 +93,8 @@ public abstract class nsPSMDetector {
 
    public void Reset() {
 	mRunSampler = mClassRunSampler ;
+	mCheckBOM = false;
+	start = true;
 	mDone = false ;
 	mItems = mClassItems ;
 
@@ -250,8 +262,56 @@ public abstract class nsPSMDetector {
 	  
    public abstract void Report(String charset) ;
 
+   
    public boolean HandleData(byte[] aBuf, int len) {
 
+	   // check the first three byte BOM to detect file encode
+	   // code fragment extraction from juniversalchardet
+	   if (mCheckBOM && this.start) {
+           this.start = false;
+           if (len > 3) {
+        	   String detectedCharset = null;
+               int b1 = aBuf[0] & 0xFF;
+               int b2 = aBuf[1] & 0xFF;
+               int b3 = aBuf[2] & 0xFF;
+               int b4 = aBuf[3] & 0xFF;
+               
+               switch (b1) {
+               case 0xEF:
+                   if (b2 == 0xBB && b3 == 0xBF) {
+                       detectedCharset = Constants.CHARSET_UTF_8;
+                   }
+                   break;
+               case 0xFE:
+                   if (b2 == 0xFF && b3 == 0x00 && b4 == 0x00) {
+                       detectedCharset = Constants.CHARSET_X_ISO_10646_UCS_4_3412;
+                   } else if (b2 == 0xFF) {
+                       detectedCharset = Constants.CHARSET_UTF_16BE;
+                   }
+                   break;
+               case 0x00:
+                   if (b2 == 0x00 && b3 == 0xFE && b4 == 0xFF) {
+                       detectedCharset = Constants.CHARSET_UTF_32BE;
+                   } else if (b2 == 0x00 && b3 == 0xFF && b4 == 0xFE) {
+                       detectedCharset = Constants.CHARSET_X_ISO_10646_UCS_4_2143;
+                   }
+                   break;
+               case 0xFF:
+                   if (b2 == 0xFE && b3 == 0x00 && b4 == 0x00) {
+                       detectedCharset = Constants.CHARSET_UTF_32LE;
+                   } else if (b2 == 0xFE) {
+                       detectedCharset = Constants.CHARSET_UTF_16LE;
+                   }
+                   break;
+               } // swich end
+               
+               if (detectedCharset != null) {
+            	   Report( detectedCharset );
+        		   mDone = true ;
+        		   return mDone ;
+               }
+           }
+       } // if (start) end
 
 	int i,j;
 	byte b, st;
@@ -263,12 +323,8 @@ public abstract class nsPSMDetector {
 	   {
 		st = nsVerifier.getNextState( mVerifier[mItemIdx[j]], 
 						b, mState[j]) ;
-//if (st != 0)
-//System.out.println( "state(0x" + Integer.toHexString(0xFF&b) +") =>"+ Integer.toHexString(st&0xFF)+ " " + mVerifier[mItemIdx[j]].charset());
 
 		if (st == nsVerifier.eItsMe) {
-
-//System.out.println( "eItsMe(0x" + Integer.toHexString(0xFF&b) +") =>"+ mVerifier[mItemIdx[j]].charset());
 
 		   Report( mVerifier[mItemIdx[j]].charset() );
 		   mDone = true ;
@@ -276,7 +332,6 @@ public abstract class nsPSMDetector {
 
 	        } else if (st == nsVerifier.eError ) {
 
-//System.out.println( "eNotMe(0x" + Integer.toHexString(0xFF&b) +") =>"+ mVerifier[mItemIdx[j]].charset());
 		   mItems--;
 		   if (j < mItems ) {
 			mItemIdx[j] = mItemIdx[mItems];	
