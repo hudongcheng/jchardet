@@ -47,6 +47,10 @@ public class nsDetector extends nsPSMDetector
 	public nsDetector(int langFlag) {
 		super(langFlag) ;
 	}
+	
+	public nsDetector(int langFlag, boolean checkBOM) {
+		super(langFlag, checkBOM) ;
+	}
 
 	public void Init(nsICharsetDetectionObserver aObserver) {
 
